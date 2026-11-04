@@ -1,7 +1,7 @@
 import 'dotenv/config';import express from 'express';import bcrypt from 'bcryptjs';import jwt from 'jsonwebtoken';import multer from 'multer';
 import helmet from 'helmet';import cookieParser from 'cookie-parser';import rateLimit from 'express-rate-limit';import path from 'path';import fs from 'fs';import crypto from 'crypto';
 import {fileURLToPath} from 'url';import db from './db.js';
-const __dir=path.dirname(fileURLToPath(import.meta.url)),UP=path.join(__dir,'uploads'),app=express();
+const __dir=path.dirname(fileURLToPath(import.meta.url)),UP=process.env.UPLOAD_DIR||path.join(__dir,'uploads'),app=express();fs.mkdirSync(UP,{recursive:true});
 const q=async(s,p=[])=>(await db.query(s,p))[0];const one=async(s,p)=>(await q(s,p))[0];
 const ah=f=>(a,b,c)=>f(a,b,c).catch(c);
 const log=(u,a,d)=>q('INSERT INTO activity_logs(user_id,action,detail) VALUES(?,?,?)',[u,a,d]);
@@ -11,13 +11,13 @@ const resolveCourse=async(u,name,classId)=>{ // cari/buat mata kuliah milik dose
   const c=await one('SELECT id FROM courses WHERE lecturer_id=? AND LOWER(name)=LOWER(?)',[u.lid,name]);
   const id=c?c.id:(await db.query('INSERT INTO courses(code,name,lecturer_id) VALUES(?,?,?)',['MK'+Date.now().toString(36).toUpperCase().slice(-8),name,u.lid]))[0].insertId;
   await q('INSERT IGNORE INTO course_enrollments(student_id,course_id) SELECT id,? FROM students'+(classId?' WHERE class_id=?':''),classId?[id,classId]:[id]);return id;};
-app.use(helmet({crossOriginResourcePolicy:false}));app.use(express.json({limit:'1mb'}));app.use(cookieParser());
+app.set('trust proxy',1);app.use(helmet({crossOriginResourcePolicy:false,contentSecurityPolicy:{useDefaults:true,directives:{'upgrade-insecure-requests':null}}}));app.use(express.json({limit:'1mb'}));app.use(cookieParser());
 app.use((req,res,next)=>{ // CSRF: mutasi hanya dari origin yang diizinkan
-  if(!['GET','HEAD'].includes(req.method)){const o=req.headers.origin;if(o&&o!==process.env.CLIENT_ORIGIN)return res.status(403).json({error:'Origin ditolak'});}next();});
+  if(!['GET','HEAD'].includes(req.method)){const o=req.headers.origin;if(o&&o!==process.env.CLIENT_ORIGIN&&new URL(o).host!==req.headers.host)return res.status(403).json({error:'Origin ditolak'});}next();});
 app.use('/api/auth/login',rateLimit({windowMs:15*60e3,max:20,message:{error:'Terlalu banyak percobaan, coba lagi nanti'}}));
 app.use('/api',rateLimit({windowMs:60e3,max:300}));
 // ---------- Auth ----------
-const cookieOpt={httpOnly:true,sameSite:'strict',secure:false,maxAge:8*3600e3};
+const cookieOpt={httpOnly:true,sameSite:'strict',secure:process.env.COOKIE_SECURE==='true',maxAge:8*3600e3};
 const auth=(...roles)=>ah(async(req,res,next)=>{
   try{var d=jwt.verify(req.cookies.token,process.env.JWT_SECRET)}catch{return res.status(401).json({error:'Silakan login'})}
   const u=await one('SELECT id,name,email,identity_number,role,is_active FROM users WHERE id=?',[d.id]);
@@ -217,5 +217,7 @@ app.put('/api/profile/password',auth(),ah(async(req,res)=>{const {old_password,n
   const u=await one('SELECT password_hash FROM users WHERE id=?',[req.user.id]);if(!bcrypt.compareSync(old_password||'',u.password_hash))return res.status(400).json({error:'Password lama salah'});
   if((new_password||'').length<6)return res.status(400).json({error:'Password baru min. 6 karakter'});
   await q('UPDATE users SET password_hash=? WHERE id=?',[bcrypt.hashSync(new_password,10),req.user.id]);res.json({ok:true});}));
+const DIST=path.join(__dir,'../frontend/dist'); // produksi: backend ikut menyajikan frontend
+if(fs.existsSync(DIST)){app.use(express.static(DIST));app.get(/^\/(?!api).*/,(req,res)=>res.sendFile(path.join(DIST,'index.html')));}
 app.use((e,req,res,next)=>{console.error(e);res.status(e.message?.includes('Format')?400:500).json({error:e.message?.includes('Format')||e.code==='LIMIT_FILE_SIZE'?e.message:'Terjadi kesalahan server'});});
 app.listen(process.env.PORT||3001,()=>console.log('TASKFLOW API berjalan di port '+(process.env.PORT||3001)));
