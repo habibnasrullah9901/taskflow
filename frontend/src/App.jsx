@@ -33,15 +33,85 @@ function Auth({onLogin}){
     </form></div>;}
 
 function Dashboard({me}){
-  const [d,setD]=useState(null);useEffect(()=>{api('/dashboard').then(setD);},[]);if(!d)return <Empty t="Memuat..."/>;
-  const keys=d.chart[0]?Object.keys(d.chart[0]).filter(k=>k!=='name'):[];const cols=['#0f2a5c','#38bdf8','#94a3b8'];
-  return <div className="space-y-4"><div className="grid grid-cols-2 lg:grid-cols-6 gap-3">{Object.entries(d.stats).map(([k,v])=><div key={k} className="card"><p className="text-xs text-slate-500">{k}</p><p className="text-2xl font-bold text-[#0f2a5c] dark:text-sky-300">{v}</p></div>)}</div>
-    <div className="grid lg:grid-cols-2 gap-4"><div className="card h-72"><h3 className="font-semibold mb-2 text-sm">{me.role==='mahasiswa'?'Perkembangan Nilai':me.role==='dosen'?'Statistik Pengumpulan':'Aktivitas 7 Hari'}</h3>
-      {d.chart.length?<ResponsiveContainer>{me.role==='mahasiswa'?<LineChart data={d.chart}><CartesianGrid strokeDasharray="3 3"/><XAxis dataKey="name" fontSize={11}/><YAxis domain={[0,100]}/><Tooltip/><Line dataKey="nilai" stroke="#0ea5e9" strokeWidth={2}/></LineChart>:
-        <BarChart data={d.chart}><CartesianGrid strokeDasharray="3 3"/><XAxis dataKey="name" fontSize={11}/><YAxis allowDecimals={false}/><Tooltip/><Legend/>{keys.map((k,i)=><Bar key={k} dataKey={k} fill={cols[i]}/>)}</BarChart>}</ResponsiveContainer>:<Empty t="Belum ada data"/>}</div>
-      <div className="card"><h3 className="font-semibold mb-2 text-sm">{me.role==='mahasiswa'?'Deadline Terdekat':me.role==='dosen'?'Mahasiswa Belum Mengumpulkan':'Aktivitas Terbaru'}</h3>
-        {d.upcoming.length?d.upcoming.map((u,i)=><div key={i} className="flex justify-between text-sm border-b border-slate-100 dark:border-slate-700 py-1.5"><span>{u.title}{u.student&&<span className="text-slate-500"> · {u.student}</span>}</span><span className="text-xs text-slate-500">{fmt(u.deadline)}</span></div>):<Empty t="Tidak ada data"/>}</div></div>
-    <div className="card"><h3 className="font-semibold mb-2 text-sm">Pengumuman</h3>{d.announcements.length?d.announcements.map((a,i)=><div key={i} className="mb-2"><p className="font-medium text-sm">{a.title}</p><p className="text-sm text-slate-500">{a.body}</p></div>):<Empty t="Belum ada pengumuman"/>}</div></div>;}
+  const [d,setD]=useState(null);
+  useEffect(()=>{
+    api('/dashboard')
+      .then(setD)
+      .catch(()=>setD({stats:{},chart:[],upcoming:[],announcements:[]}));
+  },[]);
+
+  if(!d) return <Empty t="Memuat..."/>;
+
+  // PENCEGAHAN ERROR (Safe Access Array)
+  const chartData = Array.isArray(d?.chart) ? d.chart : [];
+  const keys = chartData[0] ? Object.keys(chartData[0]).filter(k=>k!=='name') : [];
+  const cols = ['#0f2a5c','#38bdf8','#94a3b8'];
+  const statsObj = d?.stats || {};
+  const upcomingArr = Array.isArray(d?.upcoming) ? d.upcoming : [];
+  const annArr = Array.isArray(d?.announcements) ? d.announcements : [];
+
+  return (
+    <div className="space-y-4">
+      <div className="grid grid-cols-2 lg:grid-cols-6 gap-3">
+        {Object.entries(statsObj).map(([k,v])=>(
+          <div key={k} className="card">
+            <p className="text-xs text-slate-500">{k}</p>
+            <p className="text-2xl font-bold text-[#0f2a5c] dark:text-sky-300">{v}</p>
+          </div>
+        ))}
+      </div>
+      <div className="grid lg:grid-cols-2 gap-4">
+        <div className="card h-72">
+          <h3 className="font-semibold mb-2 text-sm">
+            {me.role==='mahasiswa'?'Perkembangan Nilai':me.role==='dosen'?'Statistik Pengumpulan':'Aktivitas 7 Hari'}
+          </h3>
+          {chartData.length ? (
+            <ResponsiveContainer>
+              {me.role==='mahasiswa' ? (
+                <LineChart data={chartData}>
+                  <CartesianGrid strokeDasharray="3 3"/>
+                  <XAxis dataKey="name" fontSize={11}/>
+                  <YAxis domain={[0,100]}/>
+                  <Tooltip/>
+                  <Line dataKey="nilai" stroke="#0ea5e9" strokeWidth={2}/>
+                </LineChart>
+              ) : (
+                <BarChart data={chartData}>
+                  <CartesianGrid strokeDasharray="3 3"/>
+                  <XAxis dataKey="name" fontSize={11}/>
+                  <YAxis allowDecimals={false}/>
+                  <Tooltip/>
+                  <Legend/>
+                  {keys.map((k,i)=><Bar key={k} dataKey={k} fill={cols[i]}/>)}
+                </BarChart>
+              )}
+            </ResponsiveContainer>
+          ) : <Empty t="Belum ada data"/>}
+        </div>
+        <div className="card">
+          <h3 className="font-semibold mb-2 text-sm">
+            {me.role==='mahasiswa'?'Deadline Terdekat':me.role==='dosen'?'Mahasiswa Belum Mengumpulkan':'Aktivitas Terbaru'}
+          </h3>
+          {upcomingArr.length ? upcomingArr.map((u,i)=>(
+            <div key={i} className="flex justify-between text-sm border-b border-slate-100 dark:border-slate-700 py-1.5">
+              <span>{u.title}{u.student && <span className="text-slate-500"> · {u.student}</span>}</span>
+              <span className="text-xs text-slate-500">{fmt(u.deadline)}</span>
+            </div>
+          )) : <Empty t="Tidak ada data"/>}
+        </div>
+      </div>
+      <div className="card">
+        <h3 className="font-semibold mb-2 text-sm">Pengumuman</h3>
+        {annArr.length ? annArr.map((a,i)=>(
+          <div key={i} className="mb-2">
+            <p className="font-medium text-sm">{a.title}</p>
+            <p className="text-sm text-slate-500">{a.body}</p>
+          </div>
+        )) : <Empty t="Belum ada pengumuman"/>}
+      </div>
+    </div>
+  );
+}
 
 function Materi({me}){
   const [rows,setRows]=useState([]),[courses,setCourses]=useState([]),[classes,setClasses]=useState([]),[s,setS]=useState(''),[fc,setFc]=useState(''),[show,setShow]=useState(false),[err,setErr]=useState(''),[prev,setPrev]=useState(null);
