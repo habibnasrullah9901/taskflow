@@ -1,0 +1,41 @@
+services:
+  db:
+    image: mysql:8
+    restart: always
+    environment:
+      MYSQL_ROOT_PASSWORD: ${DB_PASSWORD}
+      MYSQL_DATABASE: taskflow
+    volumes:
+      - dbdata:/var/lib/mysql
+      - ./database/taskflow.sql:/docker-entrypoint-initdb.d/01-taskflow.sql:ro
+    healthcheck:
+      test: ["CMD","mysqladmin","ping","-h","localhost","-p${DB_PASSWORD}"]
+      interval: 5s
+      retries: 20
+  app:
+    build: .
+    restart: always
+    depends_on:
+      db: {condition: service_healthy}
+    environment:
+      DB_HOST: db
+      DB_USER: root
+      DB_PASSWORD: ${DB_PASSWORD}
+      DB_NAME: taskflow
+      JWT_SECRET: ${JWT_SECRET}
+      CLIENT_ORIGIN: https://${DOMAIN}
+      COOKIE_SECURE: "true"
+    volumes:
+      - uploads:/data/uploads
+  caddy:
+    image: caddy:2
+    restart: always
+    ports: ["80:80","443:443"]
+    depends_on: [app]
+    command: caddy reverse-proxy --from ${DOMAIN} --to app:3001
+    volumes:
+      - caddydata:/data
+volumes:
+  dbdata:
+  uploads:
+  caddydata:
