@@ -14,11 +14,12 @@ const resolveCourse=async(u,name,classId)=>{ // cari/buat mata kuliah milik dose
 app.set('trust proxy', 1);
 app.use(helmet({ crossOriginResourcePolicy: false }));
 
-// Izinkan daftar origin yang diperbolehkan (lokal & Vercel)
-const allowedOrigins = [
-  'http://localhost:5173',
+app.use(cors({
+  origin: true,
+  credentials: true
+}));
   'https://task-flo.vercel.app'
-];
+;
 
 app.use(cors({
   origin: function (origin, callback) {
