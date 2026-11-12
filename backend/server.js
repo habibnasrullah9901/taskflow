@@ -1,4 +1,4 @@
-import 'dotenv/config';import express from 'express';import bcrypt from 'bcryptjs';import jwt from 'jsonwebtoken';import multer from 'multer';
+import 'dotenv/config';import express from 'express';import cors from 'cors';import bcrypt from 'bcryptjs';import jwt from 'jsonwebtoken';import multer from 'multer';
 import helmet from 'helmet';import cookieParser from 'cookie-parser';import rateLimit from 'express-rate-limit';import path from 'path';import fs from 'fs';import crypto from 'crypto';
 import {fileURLToPath} from 'url';import db from './db.js';
 const __dir=path.dirname(fileURLToPath(import.meta.url)),UP=process.env.UPLOAD_DIR||path.join(__dir,'uploads'),app=express();fs.mkdirSync(UP,{recursive:true});
@@ -11,9 +11,36 @@ const resolveCourse=async(u,name,classId)=>{ // cari/buat mata kuliah milik dose
   const c=await one('SELECT id FROM courses WHERE lecturer_id=? AND LOWER(name)=LOWER(?)',[u.lid,name]);
   const id=c?c.id:(await db.query('INSERT INTO courses(code,name,lecturer_id) VALUES(?,?,?)',['MK'+Date.now().toString(36).toUpperCase().slice(-8),name,u.lid]))[0].insertId;
   await q('INSERT IGNORE INTO course_enrollments(student_id,course_id) SELECT id,? FROM students'+(classId?' WHERE class_id=?':''),classId?[id,classId]:[id]);return id;};
-app.set('trust proxy',1);app.use(helmet({crossOriginResourcePolicy:false,contentSecurityPolicy:{useDefaults:true,directives:{'upgrade-insecure-requests':null}}}));app.use(express.json({limit:'1mb'}));app.use(cookieParser());
-app.use((req,res,next)=>{ // CSRF: mutasi hanya dari origin yang diizinkan
-  if(!['GET','HEAD'].includes(req.method)){const o=req.headers.origin;if(o&&o!==process.env.CLIENT_ORIGIN&&new URL(o).host!==req.headers.host)return res.status(403).json({error:'Origin ditolak'});}next();});
+app.set('trust proxy', 1);
+app.use(helmet({ crossOriginResourcePolicy: false }));
+
+// Izinkan daftar origin yang diperbolehkan (lokal & Vercel)
+const allowedOrigins = [
+  'http://localhost:5173',
+  'https://task-flo.vercel.app'
+];
+
+app.use(cors({
+  origin: function (origin, callback) {
+    if (!origin || allowedOrigins.includes(origin)) {
+      callback(null, true);
+    } else {
+      callback(new Error('Blocked by CORS'));
+    }
+  },
+  credentials: true
+}));
+
+// CSRF check (di baris 15-16 yang lama)
+app.use((req, res, next) => {
+  if (!['GET', 'HEAD'].includes(req.method)) {
+    const o = req.headers.origin;
+    if (o && !allowedOrigins.includes(o)) {
+      return res.status(403).json({ error: 'Origin tidak diizinkan' });
+    }
+  }
+  next();
+});
 app.use('/api/auth/login',rateLimit({windowMs:15*60e3,max:20,message:{error:'Terlalu banyak percobaan, coba lagi nanti'}}));
 app.use('/api',rateLimit({windowMs:60e3,max:300}));
 // ---------- Auth ----------
